@@ -1,0 +1,29 @@
+.quiz-page {
+  width: 100%;
+  min-height: 100vh;
+  position: relative;
+  overflow: hidden;
+  background: radial-gradient(
+      circle at center,
+      #2b0719 0%,
+      #17040e 38%,
+      #090409 62%,
+      #000000 100%
+    ),
+    linear-gradient(to right, #000000 0%, transparent 20%, transparent 80%, #000000 100%);
+  isolation: isolate;
+}
+
+.quiz-page__background {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.quiz-page > *:not(.quiz-page__background) {
+  position: relative;
+  z-index: 1;
+}
