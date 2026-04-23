@@ -440,6 +440,21 @@
   color: rgba(255, 215, 234, 0.9);
 }
 
+.quiz-explore__email-notice.is-error {
+  color: #ffc1dd;
+}
+
+.quiz-explore__email-notice.is-success {
+  color: #c9ffe2;
+}
+
+.quiz-explore__email-form .quiz-button:disabled {
+  cursor: wait;
+  opacity: 0.72;
+  transform: none;
+  filter: none;
+}
+
 .quiz-card__scale-list {
   margin: 20px 0 0;
   padding: 0;

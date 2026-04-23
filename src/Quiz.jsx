@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import emailjs from '@emailjs/browser';
 import {
   getCareerHighlights,
   getTopCareerMatches
@@ -34,6 +35,9 @@ const TYPE_NAMES = {
 const RIASEC_TYPES = ['R', 'I', 'A', 'S', 'E', 'C'];
 const CHECKPOINT_INDEX = 12;
 const BASE_QUESTION_COUNT = 24;
+const EMAILJS_SERVICE_ID = import.meta.env.VITE_EMAILJS_SERVICE_ID || 'service_pathfinder';
+const EMAILJS_TEMPLATE_ID = import.meta.env.VITE_EMAILJS_TEMPLATE_ID || '';
+const EMAILJS_PUBLIC_KEY = import.meta.env.VITE_EMAILJS_PUBLIC_KEY || '';
 
 const FOUNDATION_PLAN = [
   'interest',
@@ -364,6 +368,34 @@ function createInitialQuestionIds() {
   return firstQuestion ? [firstQuestion.id] : [];
 }
 
+function buildResultsEmailMessage(topTraits, careerMatches) {
+  const traitSection =
+    topTraits.length > 0 ? topTraits.map((trait) => trait.name).join('\n') : 'No top traits available yet.';
+
+  const matchSection =
+    careerMatches.length > 0
+      ? careerMatches
+          .map((career) => {
+            const highlights = getCareerHighlights(career);
+            const highlightsText = highlights.length > 0 ? highlights.join('\n') : 'No description available.';
+            return `${career.title}\n${highlightsText}`;
+          })
+          .join('\n\n')
+      : 'No top career matches available yet.';
+
+  return [
+    'Your Career Profile',
+    '',
+    'Top Traits:',
+    '',
+    traitSection,
+    '',
+    'Top Career Matches:',
+    '',
+    matchSection
+  ].join('\n');
+}
+
 export default function Quiz() {
   const navigate = useNavigate();
   const [stage, setStage] = useState('question');
@@ -373,6 +405,8 @@ export default function Quiz() {
   const [checkpointCount, setCheckpointCount] = useState(0);
   const [resultsEmail, setResultsEmail] = useState('');
   const [resultsEmailNotice, setResultsEmailNotice] = useState('');
+  const [resultsEmailNoticeType, setResultsEmailNoticeType] = useState('');
+  const [isSendingResultsEmail, setIsSendingResultsEmail] = useState(false);
   const totalQuestions = BASE_QUESTION_COUNT;
 
   const currentQuestionId = askedQuestionIds[currentStep];
@@ -396,6 +430,13 @@ export default function Quiz() {
 
   const checkpointTopCareer = useMemo(() => getTopCareerMatches(profileSummary, 1)[0] ?? null, [profileSummary]);
 
+  const clearResultsEmailState = () => {
+    setResultsEmail('');
+    setResultsEmailNotice('');
+    setResultsEmailNoticeType('');
+    setIsSendingResultsEmail(false);
+  };
+
   const handleReset = () => {
     const initialQuestionIds = createInitialQuestionIds();
     setStage('question');
@@ -403,6 +444,7 @@ export default function Quiz() {
     setAskedQuestionIds(initialQuestionIds);
     setAnswersById({});
     setCheckpointCount(0);
+    clearResultsEmailState();
   };
 
   const handleSelectAnswer = (value) => {
@@ -418,6 +460,7 @@ export default function Quiz() {
 
     const nextStep = currentStep + 1;
     if (nextStep >= totalQuestions) {
+      clearResultsEmailState();
       setStage('results');
       return;
     }
@@ -432,6 +475,7 @@ export default function Quiz() {
       );
 
       if (nextQuestionId === null) {
+        clearResultsEmailState();
         setStage('results');
         return;
       }
@@ -460,22 +504,69 @@ export default function Quiz() {
     setCurrentStep((previous) => previous - 1);
   };
 
+  const handleContinueQuizFromResults = () => {
+    clearResultsEmailState();
+    setStage('question');
+  };
+
   const handleEmailCopySubmit = (event) => {
     event.preventDefault();
     const email = resultsEmail.trim();
 
+    if (isSendingResultsEmail) {
+      return;
+    }
+
+    if (!EMAILJS_TEMPLATE_ID || !EMAILJS_PUBLIC_KEY) {
+      setResultsEmailNoticeType('error');
+      setResultsEmailNotice('Email is not configured yet. Add EmailJS template ID and public key in .env.');
+      return;
+    }
+
     if (!email) {
+      setResultsEmailNoticeType('error');
       setResultsEmailNotice('Enter an email address to continue.');
       return;
     }
 
     const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailPattern.test(email)) {
+      setResultsEmailNoticeType('error');
       setResultsEmailNotice('Enter a valid email address.');
       return;
     }
 
-    setResultsEmailNotice(`Ready to send to ${email}. Connect your email backend to enable delivery.`);
+    const message = buildResultsEmailMessage(resultsTopTypes, exploreCareerMatches);
+
+    setIsSendingResultsEmail(true);
+    setResultsEmailNoticeType('');
+    setResultsEmailNotice('');
+
+    emailjs
+      .send(
+        EMAILJS_SERVICE_ID,
+        EMAILJS_TEMPLATE_ID,
+        {
+          to_email: email,
+          subject: 'Your Career Match Results',
+          message,
+          reply_to: email
+        },
+        {
+          publicKey: EMAILJS_PUBLIC_KEY
+        }
+      )
+      .then(() => {
+        setResultsEmailNoticeType('success');
+        setResultsEmailNotice(`Sent. Check ${email} for "Your Career Match Results".`);
+      })
+      .catch(() => {
+        setResultsEmailNoticeType('error');
+        setResultsEmailNotice('Unable to send right now. Please try again.');
+      })
+      .finally(() => {
+        setIsSendingResultsEmail(false);
+      });
   };
 
   return (
@@ -600,7 +691,7 @@ export default function Quiz() {
                       <button className="quiz-button quiz-button--ghost" type="button" onClick={() => setStage('checkpoint')}>
                         Back
                       </button>
-                      <button className="quiz-button" type="button" onClick={() => setStage('question')}>
+                      <button className="quiz-button" type="button" onClick={handleContinueQuizFromResults}>
                         Continue Quiz
                       </button>
                     </>
@@ -637,16 +728,22 @@ export default function Quiz() {
                         setResultsEmail(event.target.value);
                         if (resultsEmailNotice) {
                           setResultsEmailNotice('');
+                          setResultsEmailNoticeType('');
                         }
                       }}
                       placeholder="you@example.com"
                       aria-label="Email address"
+                      disabled={isSendingResultsEmail}
                     />
-                    <button className="quiz-button" type="submit">
-                      Send
+                    <button className="quiz-button" type="submit" disabled={isSendingResultsEmail}>
+                      {isSendingResultsEmail ? 'Sending...' : 'Send'}
                     </button>
                   </form>
-                  {resultsEmailNotice && <p className="quiz-explore__email-notice">{resultsEmailNotice}</p>}
+                  {resultsEmailNotice && (
+                    <p className={`quiz-explore__email-notice ${resultsEmailNoticeType === 'error' ? 'is-error' : 'is-success'}`}>
+                      {resultsEmailNotice}
+                    </p>
+                  )}
                 </div>
               </section>
             </div>
