@@ -375,7 +375,13 @@ export default function Quiz() {
   const currentQuestionId = askedQuestionIds[currentStep];
   const currentQuestion = currentQuestionId === undefined ? null : QUESTION_BY_ID.get(currentQuestionId);
   const currentAnswer = currentQuestion ? answersById[currentQuestion.id] : undefined;
-  const progressPercent = ((Math.min(currentStep, totalQuestions - 1) + 1) / totalQuestions) * 100;
+  const isSecondProgressPhase = currentStep >= CHECKPOINT_INDEX;
+  const progressDisplayTotal = isSecondProgressPhase ? totalQuestions : CHECKPOINT_INDEX;
+  const progressDisplayValue = isSecondProgressPhase ? currentStep : currentStep + 1;
+  const progressPercent =
+    (Math.max(0, Math.min(progressDisplayValue, progressDisplayTotal)) / progressDisplayTotal) * 100;
+  const checkpointProgressPercent =
+    (Math.max(0, Math.min(checkpointCount, CHECKPOINT_INDEX)) / CHECKPOINT_INDEX) * 100;
 
   const profileSummary = useMemo(() => {
     return getProfileFromAnswers(askedQuestionIds, answersById);
@@ -474,7 +480,7 @@ export default function Quiz() {
                 Back
               </button>
               <p className="quiz-card__question-count">
-                Question {currentStep + 1} / {totalQuestions}
+                Progress {progressDisplayValue} / {progressDisplayTotal}
               </p>
               <div className="quiz-card__progress" aria-hidden="true">
                 <span style={{ width: `${progressPercent}%` }} />
@@ -505,18 +511,6 @@ export default function Quiz() {
 
         {stage === 'results' && (
           <section className="quiz-card quiz-card--explore" aria-labelledby="quiz-explore-title">
-            <div className="quiz-explore__top-row">
-              {isFinalResults ? (
-                <Link className="quiz-chip-btn quiz-chip-btn--link" to="/">
-                  Back Home
-                </Link>
-              ) : (
-                <button className="quiz-chip-btn" type="button" onClick={() => setStage('checkpoint')}>
-                  Back
-                </button>
-              )}
-            </div>
-
             <div className="quiz-explore__layout">
               <div className="quiz-explore__left-column">
                 <section className="quiz-explore__panel">
@@ -581,9 +575,14 @@ export default function Quiz() {
                       </button>
                     </>
                   ) : (
-                    <button className="quiz-button" type="button" onClick={() => setStage('question')}>
-                      Continue Quiz
-                    </button>
+                    <>
+                      <button className="quiz-button quiz-button--ghost" type="button" onClick={() => setStage('checkpoint')}>
+                        Back
+                      </button>
+                      <button className="quiz-button" type="button" onClick={() => setStage('question')}>
+                        Continue Quiz
+                      </button>
+                    </>
                   )}
                 </div>
               </div>
@@ -612,25 +611,42 @@ export default function Quiz() {
 
         {stage === 'checkpoint' && (
           <section className="quiz-card quiz-card--checkpoint" aria-labelledby="quiz-checkpoint-title">
-            <h2 id="quiz-checkpoint-title">Checkpoint Reached</h2>
-            <p>
-              You&apos;ve completed {checkpointCount} of {totalQuestions} questions. Continue for a
-              more confident match.
-            </p>
-            {checkpointTopCareer && (
-              <div className="quiz-card__checkpoint-career" aria-live="polite">
-                <p className="quiz-card__checkpoint-career-label">Top Career Right Now</p>
-                <p className="quiz-card__checkpoint-career-title">{checkpointTopCareer.title}</p>
-                <p className="quiz-card__checkpoint-career-meta">{checkpointTopCareer.riasec.join('')} profile match</p>
+            <div className="quiz-card__top">
+              <button className="quiz-chip-btn" type="button" onClick={handleBack}>
+                Back
+              </button>
+              <p className="quiz-card__question-count">
+                Progress {checkpointCount} / {CHECKPOINT_INDEX}
+              </p>
+              <div className="quiz-card__progress" aria-hidden="true">
+                <span style={{ width: `${checkpointProgressPercent}%` }} />
               </div>
-            )}
-            <div className="quiz-card__intro-actions quiz-card__checkpoint-actions">
-              <button className="quiz-button quiz-button--ghost" type="button" onClick={() => setStage('results')}>
-                Explore Careers
+              <button className="quiz-icon-btn" type="button" onClick={handleReset} aria-label="Restart quiz">
+                &#8635;
               </button>
-              <button className="quiz-button" type="button" onClick={() => setStage('question')}>
-                Continue Quiz
-              </button>
+            </div>
+
+            <div className="quiz-card__checkpoint-body">
+              <h2 id="quiz-checkpoint-title">Checkpoint Reached</h2>
+              <p>
+                You&apos;ve completed {checkpointCount} of {totalQuestions} questions. Continue for a
+                more confident match.
+              </p>
+              {checkpointTopCareer && (
+                <div className="quiz-card__checkpoint-career" aria-live="polite">
+                  <p className="quiz-card__checkpoint-career-label">Top Career Right Now</p>
+                  <p className="quiz-card__checkpoint-career-title">{checkpointTopCareer.title}</p>
+                  <p className="quiz-card__checkpoint-career-meta">{checkpointTopCareer.riasec.join('')} profile match</p>
+                </div>
+              )}
+              <div className="quiz-card__intro-actions quiz-card__checkpoint-actions">
+                <button className="quiz-button quiz-button--ghost" type="button" onClick={() => setStage('results')}>
+                  Explore Careers
+                </button>
+                <button className="quiz-button" type="button" onClick={() => setStage('question')}>
+                  Continue Quiz
+                </button>
+              </div>
             </div>
           </section>
         )}

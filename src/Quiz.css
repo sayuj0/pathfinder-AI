@@ -100,8 +100,13 @@
 }
 
 .quiz-card--checkpoint {
-  max-width: 680px;
-  padding: clamp(22px, 3vw, 34px);
+  max-width: 780px;
+  padding: 0;
+  overflow: hidden;
+}
+
+.quiz-card__checkpoint-body {
+  padding: clamp(18px, 2.8vw, 30px) clamp(16px, 3vw, 28px) clamp(20px, 3vw, 30px);
 }
 
 .quiz-card--intro h1,
@@ -121,7 +126,7 @@
 }
 
 .quiz-card__checkpoint-actions {
-  justify-content: center;
+  width: 100%;
 }
 
 .quiz-card__checkpoint-career {
@@ -159,22 +164,7 @@
   padding: clamp(18px, 2vw, 24px);
 }
 
-.quiz-explore__top-row {
-  display: flex;
-  align-items: flex-start;
-  justify-content: flex-start;
-  gap: 14px;
-}
-
-.quiz-chip-btn--link,
-.quiz-chip-btn--link:visited {
-  display: inline-flex;
-  align-items: center;
-  text-decoration: none;
-}
-
 .quiz-explore__layout {
-  margin-top: 14px;
   display: grid;
   grid-template-columns: minmax(320px, 0.95fr) minmax(360px, 1.45fr);
   gap: 14px;
@@ -437,6 +427,14 @@
   gap: 12px;
   justify-content: flex-end;
   flex-wrap: wrap;
+}
+
+.quiz-card__intro-actions.quiz-card__checkpoint-actions {
+  justify-content: flex-start;
+}
+
+.quiz-card__intro-actions.quiz-card__checkpoint-actions .quiz-button:last-child {
+  margin-left: auto;
 }
 
 .quiz-button,
@@ -711,10 +709,6 @@
 
   .quiz-card--explore {
     padding: 14px;
-  }
-
-  .quiz-explore__top-row {
-    align-items: center;
   }
 
   .quiz-explore__matches-panel {
