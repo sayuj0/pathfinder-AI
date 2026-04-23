@@ -1,7 +1,16 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import {
+  getTopCareerMatches
+} from './careerClusters';
 import Particles from './Particles';
-import { QUESTIONS } from './questions';
+import {
+  CONSTRAINT_TRAITS,
+  DISAMBIGUATION_CATEGORY,
+  QUESTIONS,
+  WORK_STYLE_TRAITS
+} from './questions';
+import { selectNextQuestion } from './selectNextQuestion';
 import './Quiz.css';
 
 const ANSWER_OPTIONS = [
@@ -21,63 +30,425 @@ const TYPE_NAMES = {
   C: 'Conventional'
 };
 
+const RIASEC_TYPES = ['R', 'I', 'A', 'S', 'E', 'C'];
+const CHECKPOINT_INDEX = 12;
+const BASE_QUESTION_COUNT = 24;
+
+const FOUNDATION_PLAN = [
+  'interest',
+  'interest',
+  'interest',
+  'interest',
+  'interest',
+  'interest',
+  'work_style',
+  'work_style',
+  'work_style',
+  'constraint',
+  'constraint',
+  'constraint'
+];
+
+const REFINEMENT_PLAN = [
+  'interest',
+  'work_style',
+  'interest',
+  'constraint',
+  'interest',
+  'work_style',
+  'interest',
+  'constraint',
+  'interest',
+  'work_style',
+  'interest',
+  'constraint'
+];
+
+const QUESTION_BY_ID = new Map(QUESTIONS.map((question) => [question.id, question]));
+const QUESTIONS_BY_CATEGORY = QUESTIONS.reduce((grouped, question) => {
+  grouped[question.category] = grouped[question.category] ?? [];
+  grouped[question.category].push(question);
+  return grouped;
+}, {});
+const NORMALIZE_TEXT_PATTERN = /[^a-z0-9 ]/g;
+
+function normalizeQuestionText(text) {
+  return String(text).toLowerCase().replace(NORMALIZE_TEXT_PATTERN, '').replace(/\s+/g, ' ').trim();
+}
+
+function reverseIfNeeded(question, value) {
+  return question.reverse ? 6 - value : value;
+}
+
+function getInitialProfile() {
+  return {
+    riasecMeans: { R: 3, I: 3, A: 3, S: 3, E: 3, C: 3 },
+    workStyleMeans: {
+      team_orientation: 3,
+      variety_preference: 3,
+      pressure_tolerance: 3
+    },
+    constraintMeans: {
+      education_length: 3,
+      salary_priority: 3,
+      onsite_preference: 3,
+      people_facing_preference: 3
+    },
+    riasecSums: { R: 0, I: 0, A: 0, S: 0, E: 0, C: 0 },
+    riasecCounts: { R: 0, I: 0, A: 0, S: 0, E: 0, C: 0 },
+    workStyleCounts: Object.fromEntries(WORK_STYLE_TRAITS.map((trait) => [trait, 0])),
+    constraintCounts: Object.fromEntries(CONSTRAINT_TRAITS.map((trait) => [trait, 0])),
+    answeredCount: 0
+  };
+}
+
+function getProfileFromAnswers(questionIds, answersById) {
+  const summary = getInitialProfile();
+
+  for (const questionId of questionIds) {
+    const question = QUESTION_BY_ID.get(questionId);
+    const rawAnswer = answersById[questionId];
+
+    if (!question || rawAnswer === undefined) {
+      continue;
+    }
+
+    const answer = reverseIfNeeded(question, rawAnswer);
+    summary.answeredCount += 1;
+
+    if (question.type) {
+      summary.riasecSums[question.type] += answer;
+      summary.riasecCounts[question.type] += 1;
+    }
+
+    if (question.traitGroup === 'work_style') {
+      summary.workStyleMeans[question.trait] += answer;
+      summary.workStyleCounts[question.trait] += 1;
+    }
+
+    if (question.traitGroup === 'constraint') {
+      summary.constraintMeans[question.trait] += answer;
+      summary.constraintCounts[question.trait] += 1;
+    }
+  }
+
+  for (const typeCode of RIASEC_TYPES) {
+    const count = summary.riasecCounts[typeCode];
+    summary.riasecMeans[typeCode] = count > 0 ? summary.riasecSums[typeCode] / count : 3;
+  }
+
+  for (const trait of WORK_STYLE_TRAITS) {
+    const count = summary.workStyleCounts[trait];
+    summary.workStyleMeans[trait] = count > 0 ? summary.workStyleMeans[trait] / count : 3;
+  }
+
+  for (const trait of CONSTRAINT_TRAITS) {
+    const count = summary.constraintCounts[trait];
+    summary.constraintMeans[trait] = count > 0 ? summary.constraintMeans[trait] / count : 3;
+  }
+
+  return summary;
+}
+
+function getTopTypeMatches(riasecMeans) {
+  return Object.entries(riasecMeans)
+    .sort((first, second) => second[1] - first[1])
+    .slice(0, 3)
+    .map(([code, score]) => ({
+      code,
+      score,
+      name: TYPE_NAMES[code]
+    }));
+}
+
+function getQuestionContext(askedQuestionIds, answersById) {
+  const profile = getProfileFromAnswers(askedQuestionIds, answersById);
+  const interestCountsByType = Object.fromEntries(RIASEC_TYPES.map((typeCode) => [typeCode, 0]));
+  const postCheckpointInterestTypes = [];
+
+  askedQuestionIds.forEach((questionId, index) => {
+    const question = QUESTION_BY_ID.get(questionId);
+    if (!question) {
+      return;
+    }
+
+    if (question.category === 'interest' && question.type) {
+      interestCountsByType[question.type] += 1;
+      if (index >= CHECKPOINT_INDEX) {
+        postCheckpointInterestTypes.push(question.type);
+      }
+    }
+  });
+
+  return { profile, interestCountsByType, postCheckpointInterestTypes };
+}
+
+function getDeterministicIndex(seed, length) {
+  const safeLength = Math.max(1, length);
+  const value = Math.sin(seed * 12.9898) * 43758.5453123;
+  return Math.floor((value - Math.floor(value)) * safeLength) % safeLength;
+}
+
+function getQuestionSeed(askedQuestionIds, extra = 0) {
+  return askedQuestionIds.reduce((sum, questionId, index) => sum + questionId * (index + 3), 17) + extra;
+}
+
+function pickByTraitUncertainty(candidates, traitMeans, traitCounts, askedQuestionIds) {
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  const scored = candidates.map((question) => {
+    const trait = question.trait;
+    const mean = traitMeans[trait] ?? 3;
+    const count = traitCounts[trait] ?? 0;
+    const uncertainty = 1 - Math.abs(mean - 3) / 2;
+    const coverageGap = 1 / (count + 1);
+    const score = uncertainty * 0.65 + coverageGap * 0.35;
+    return { question, score };
+  });
+
+  scored.sort((first, second) => second.score - first.score || first.question.id - second.question.id);
+  const topScore = scored[0].score;
+  const topBand = scored.filter((entry) => entry.score >= topScore - 0.03).map((entry) => entry.question);
+  const seed = getQuestionSeed(askedQuestionIds, topBand.length * 11);
+  return topBand[getDeterministicIndex(seed, topBand.length)];
+}
+
+function selectInterestQuestion(candidates, context, askedQuestionIds, nextStepIndex) {
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  let allowedTypes = null;
+
+  if (nextStepIndex < CHECKPOINT_INDEX) {
+    const minimumAskedCount = Math.min(
+      ...RIASEC_TYPES.map((typeCode) => context.interestCountsByType[typeCode] ?? 0)
+    );
+    allowedTypes = RIASEC_TYPES.filter(
+      (typeCode) => (context.interestCountsByType[typeCode] ?? 0) === minimumAskedCount
+    );
+  } else {
+    const rankedTypes = RIASEC_TYPES.map((typeCode) => ({
+      typeCode,
+      score: context.profile.riasecMeans[typeCode]
+    })).sort((first, second) => second.score - first.score);
+
+    const focusTypes = rankedTypes.slice(0, 3).map((entry) => entry.typeCode);
+    const nonFocusTypes = RIASEC_TYPES.filter((typeCode) => !focusTypes.includes(typeCode));
+    const postCheckpointCount = context.postCheckpointInterestTypes.length;
+    const lastWindow = context.postCheckpointInterestTypes.slice(-3);
+    const forceNonFocusByWindow =
+      lastWindow.length === 3 && lastWindow.every((typeCode) => focusTypes.includes(typeCode));
+    const forceNonFocusByCadence = postCheckpointCount > 0 && postCheckpointCount % 3 === 2;
+
+    allowedTypes = forceNonFocusByWindow || forceNonFocusByCadence ? nonFocusTypes : focusTypes;
+  }
+
+  const selected =
+    selectNextQuestion(candidates, askedQuestionIds, context.profile.riasecMeans, { allowedTypes }) ??
+    selectNextQuestion(candidates, askedQuestionIds, context.profile.riasecMeans);
+
+  return selected;
+}
+
+function selectDisambiguationQuestion(candidates, context, askedQuestionIds) {
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  const topCareerTitles = getTopCareerMatches(context.profile, 3).map((career) => career.title);
+  const targeted = candidates.filter((question) => {
+    if (!Array.isArray(question.targets) || question.targets.length === 0) {
+      return false;
+    }
+
+    return question.targets.some((title) => topCareerTitles.includes(title));
+  });
+
+  const pool = targeted.length > 0 ? targeted : candidates;
+  return pickByTraitUncertainty(
+    pool,
+    {
+      ...context.profile.workStyleMeans,
+      ...context.profile.constraintMeans,
+      ...context.profile.riasecMeans
+    },
+    {
+      ...context.profile.workStyleCounts,
+      ...context.profile.constraintCounts,
+      ...context.profile.riasecCounts
+    },
+    askedQuestionIds
+  );
+}
+
+function chooseCategoryForStep(stepIndex) {
+  if (stepIndex < CHECKPOINT_INDEX) {
+    return FOUNDATION_PLAN[stepIndex];
+  }
+
+  if (stepIndex < BASE_QUESTION_COUNT) {
+    return REFINEMENT_PLAN[stepIndex - CHECKPOINT_INDEX];
+  }
+
+  return null;
+}
+
+function getNextQuestionId(askedQuestionIds, answersById, stepIndex) {
+  const context = getQuestionContext(askedQuestionIds, answersById);
+  const category = chooseCategoryForStep(stepIndex);
+
+  if (!category) {
+    return null;
+  }
+
+  const askedTextKeys = new Set(
+    askedQuestionIds
+      .map((questionId) => QUESTION_BY_ID.get(questionId))
+      .filter(Boolean)
+      .map((question) => normalizeQuestionText(question.text))
+  );
+
+  const categoryQuestions = (QUESTIONS_BY_CATEGORY[category] ?? []).filter(
+    (question) =>
+      !askedQuestionIds.includes(question.id) &&
+      !askedTextKeys.has(normalizeQuestionText(question.text))
+  );
+
+  if (categoryQuestions.length === 0) {
+    return null;
+  }
+
+  if (category === 'interest') {
+    return selectInterestQuestion(categoryQuestions, context, askedQuestionIds, stepIndex)?.id ?? null;
+  }
+
+  if (category === 'work_style') {
+    return pickByTraitUncertainty(
+      categoryQuestions,
+      context.profile.workStyleMeans,
+      context.profile.workStyleCounts,
+      askedQuestionIds
+    )?.id ?? null;
+  }
+
+  if (category === 'constraint') {
+    return pickByTraitUncertainty(
+      categoryQuestions,
+      context.profile.constraintMeans,
+      context.profile.constraintCounts,
+      askedQuestionIds
+    )?.id ?? null;
+  }
+
+  if (category === DISAMBIGUATION_CATEGORY) {
+    return selectDisambiguationQuestion(categoryQuestions, context, askedQuestionIds)?.id ?? null;
+  }
+
+  return null;
+}
+
+function createInitialQuestionIds() {
+  const firstQuestion = selectNextQuestion(QUESTIONS_BY_CATEGORY.interest ?? [], [], {
+    R: 3,
+    I: 3,
+    A: 3,
+    S: 3,
+    E: 3,
+    C: 3
+  });
+
+  return firstQuestion ? [firstQuestion.id] : [];
+}
+
 export default function Quiz() {
   const navigate = useNavigate();
   const [stage, setStage] = useState('question');
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const [currentStep, setCurrentStep] = useState(0);
   const [answersById, setAnswersById] = useState({});
+  const [askedQuestionIds, setAskedQuestionIds] = useState(() => createInitialQuestionIds());
+  const [checkpointCount, setCheckpointCount] = useState(0);
+  const totalQuestions = BASE_QUESTION_COUNT;
 
-  const currentQuestion = QUESTIONS[currentIndex];
-  const totalQuestions = QUESTIONS.length;
+  const currentQuestionId = askedQuestionIds[currentStep];
+  const currentQuestion = currentQuestionId === undefined ? null : QUESTION_BY_ID.get(currentQuestionId);
   const currentAnswer = currentQuestion ? answersById[currentQuestion.id] : undefined;
-  const progressPercent = ((currentIndex + 1) / totalQuestions) * 100;
+  const progressPercent = ((Math.min(currentStep, totalQuestions - 1) + 1) / totalQuestions) * 100;
 
-  const resultSummary = useMemo(() => {
-    const totals = { R: 0, I: 0, A: 0, S: 0, E: 0, C: 0 };
+  const profileSummary = useMemo(() => {
+    return getProfileFromAnswers(askedQuestionIds, answersById);
+  }, [answersById, askedQuestionIds]);
 
-    for (const question of QUESTIONS) {
-      totals[question.type] += answersById[question.id] ?? 0;
-    }
+  const resultsTopTypes = useMemo(() => getTopTypeMatches(profileSummary.riasecMeans), [profileSummary.riasecMeans]);
+  const exploreCareerMatches = useMemo(() => getTopCareerMatches(profileSummary, 8), [profileSummary]);
+  const isFinalResults = profileSummary.answeredCount >= totalQuestions;
 
-    const topTypes = Object.entries(totals)
-      .sort((first, second) => second[1] - first[1])
-      .slice(0, 3)
-      .map(([code, score]) => ({
-        code,
-        score,
-        name: TYPE_NAMES[code]
-      }));
-
-    return { totals, topTypes };
-  }, [answersById]);
+  const checkpointTopCareer = useMemo(() => getTopCareerMatches(profileSummary, 1)[0] ?? null, [profileSummary]);
 
   const handleReset = () => {
+    const initialQuestionIds = createInitialQuestionIds();
     setStage('question');
-    setCurrentIndex(0);
+    setCurrentStep(0);
+    setAskedQuestionIds(initialQuestionIds);
     setAnswersById({});
+    setCheckpointCount(0);
   };
 
   const handleSelectAnswer = (value) => {
-    setAnswersById((previous) => ({
-      ...previous,
-      [currentQuestion.id]: value
-    }));
+    if (!currentQuestion) {
+      return;
+    }
 
-    if (currentIndex === totalQuestions - 1) {
+    const nextAnswers = {
+      ...answersById,
+      [currentQuestion.id]: value
+    };
+    setAnswersById(nextAnswers);
+
+    const nextStep = currentStep + 1;
+    if (nextStep >= totalQuestions) {
       setStage('results');
       return;
     }
 
-    setCurrentIndex((previous) => previous + 1);
+    let nextAskedQuestionIds = askedQuestionIds;
+
+    if (!nextAskedQuestionIds[nextStep]) {
+      const nextQuestionId = getNextQuestionId(
+        askedQuestionIds,
+        nextAnswers,
+        nextStep
+      );
+
+      if (nextQuestionId === null) {
+        setStage('results');
+        return;
+      }
+
+      nextAskedQuestionIds = [...askedQuestionIds, nextQuestionId];
+      setAskedQuestionIds(nextAskedQuestionIds);
+    }
+
+    if (nextStep === CHECKPOINT_INDEX) {
+      setCheckpointCount(nextStep);
+      setCurrentStep(nextStep);
+      setStage('checkpoint');
+      return;
+    }
+
+    setCurrentStep(nextStep);
   };
 
   const handleBack = () => {
-    if (currentIndex === 0) {
+    if (currentStep === 0) {
       navigate('/');
       return;
     }
 
-    setCurrentIndex((previous) => previous - 1);
+    setStage('question');
+    setCurrentStep((previous) => previous - 1);
   };
 
   return (
@@ -103,17 +474,19 @@ export default function Quiz() {
                 Back
               </button>
               <p className="quiz-card__question-count">
-                Question {currentIndex + 1} / {totalQuestions}
+                Question {currentStep + 1} / {totalQuestions}
               </p>
               <div className="quiz-card__progress" aria-hidden="true">
                 <span style={{ width: `${progressPercent}%` }} />
               </div>
               <button className="quiz-icon-btn" type="button" onClick={handleReset} aria-label="Restart quiz">
-                ↺
+                &#8635;
               </button>
             </div>
 
-            <p className="quiz-card__question-text">{currentQuestion.text}</p>
+            <p className="quiz-card__question-text">
+              {currentQuestion ? currentQuestion.text : 'No question available.'}
+            </p>
 
             <div className="quiz-card__options">
               {ANSWER_OPTIONS.map((option) => (
@@ -131,24 +504,132 @@ export default function Quiz() {
         )}
 
         {stage === 'results' && (
-          <section className="quiz-card quiz-card--results" aria-labelledby="quiz-results-title">
-            <h2 id="quiz-results-title">Top RIASEC Matches</h2>
-            <ol className="quiz-card__results-list">
-              {resultSummary.topTypes.map((result) => (
-                <li key={result.code}>
-                  <strong>{result.name}</strong>
-                  <span>
-                    {result.code}: {result.score} points
-                  </span>
-                </li>
-              ))}
-            </ol>
-            <div className="quiz-card__intro-actions">
-              <Link className="quiz-button quiz-button--ghost" to="/">
-                Back Home
-              </Link>
-              <button className="quiz-button" type="button" onClick={handleReset}>
-                Retake Quiz
+          <section className="quiz-card quiz-card--explore" aria-labelledby="quiz-explore-title">
+            <div className="quiz-explore__top-row">
+              {isFinalResults ? (
+                <Link className="quiz-chip-btn quiz-chip-btn--link" to="/">
+                  Back Home
+                </Link>
+              ) : (
+                <button className="quiz-chip-btn" type="button" onClick={() => setStage('checkpoint')}>
+                  Back
+                </button>
+              )}
+            </div>
+
+            <div className="quiz-explore__layout">
+              <div className="quiz-explore__left-column">
+                <section className="quiz-explore__panel">
+                  <p className="quiz-explore__eyebrow">{isFinalResults ? 'Assessment Complete' : 'Checkpoint Profile'}</p>
+                  <h2 id="quiz-explore-title">Your Career Profile</h2>
+                  <p className="quiz-explore__subcopy">Based on {profileSummary.answeredCount} questions</p>
+
+                  <h3>Your Top Traits</h3>
+                  <ul className="quiz-explore__traits">
+                    {resultsTopTypes.map((result) => (
+                      <li key={result.code}>
+                        <div className="quiz-explore__trait-header">
+                          <span>{result.name}</span>
+                          <span>{result.score.toFixed(2)} / 5</span>
+                        </div>
+                        <div className="quiz-explore__trait-bar" aria-hidden="true">
+                          <span style={{ width: `${Math.max(0, Math.min(100, (result.score / 5) * 100))}%` }} />
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+
+                <section className="quiz-explore__panel quiz-explore__chatbot-panel" aria-labelledby="quiz-chatbot-title">
+                  <h3 id="quiz-chatbot-title">Career Chatbot</h3>
+                  <p className="quiz-explore__subcopy">
+                    AI integration placeholder. You can wire your own assistant logic here later.
+                  </p>
+                  <div className="quiz-explore__chatbot-window" aria-live="polite">
+                    <p className="quiz-explore__chatbot-message quiz-explore__chatbot-message--assistant">
+                      I&apos;ll help you compare your matches once the AI backend is connected.
+                    </p>
+                    <p className="quiz-explore__chatbot-message quiz-explore__chatbot-message--user">
+                      Which of my top matches fits remote work best?
+                    </p>
+                  </div>
+                  <form
+                    className="quiz-explore__chatbot-input-row"
+                    onSubmit={(event) => event.preventDefault()}
+                    aria-label="Chatbot input placeholder"
+                  >
+                    <input
+                      type="text"
+                      disabled
+                      placeholder="Chat input placeholder"
+                      aria-label="Chat input"
+                    />
+                    <button className="quiz-button" type="submit" disabled>
+                      Send
+                    </button>
+                  </form>
+                </section>
+
+                <div className="quiz-explore__actions">
+                  {isFinalResults ? (
+                    <>
+                      <Link className="quiz-button quiz-button--ghost" to="/">
+                        Back Home
+                      </Link>
+                      <button className="quiz-button" type="button" onClick={handleReset}>
+                        Retake Quiz
+                      </button>
+                    </>
+                  ) : (
+                    <button className="quiz-button" type="button" onClick={() => setStage('question')}>
+                      Continue Quiz
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <section className="quiz-explore__panel quiz-explore__matches-panel" aria-labelledby="quiz-matches-title">
+                <h3 id="quiz-matches-title">My Career Matches</h3>
+                <ul className="quiz-explore__matches-list">
+                  {exploreCareerMatches.map((career, index) => (
+                    <li key={career.title}>
+                      <div>
+                        <strong>{career.title}</strong>
+                        <p>
+                          {career.riasec.join('')} profile
+                          {' • '}
+                          Fit {(career.totalScore * 100).toFixed(0)}%
+                        </p>
+                      </div>
+                      <span className="quiz-explore__rank">#{index + 1}</span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            </div>
+          </section>
+        )}
+
+        {stage === 'checkpoint' && (
+          <section className="quiz-card quiz-card--checkpoint" aria-labelledby="quiz-checkpoint-title">
+            <h2 id="quiz-checkpoint-title">Checkpoint Reached</h2>
+            <p>
+              You&apos;ve completed {checkpointCount} of {totalQuestions} questions. Continue for a
+              more confident match.
+            </p>
+            {checkpointTopCareer && (
+              <div className="quiz-card__checkpoint-career" aria-live="polite">
+                <p className="quiz-card__checkpoint-career-label">Top Career Right Now</p>
+                <p className="quiz-card__checkpoint-career-title">{checkpointTopCareer.title}</p>
+                <p className="quiz-card__checkpoint-career-meta">{checkpointTopCareer.riasec.join('')} profile match</p>
+              </div>
+            )}
+            <div className="quiz-card__intro-actions quiz-card__checkpoint-actions">
+              <button className="quiz-button quiz-button--ghost" type="button" onClick={() => setStage('results')}>
+                Explore Careers
+              </button>
+              <button className="quiz-button" type="button" onClick={() => setStage('question')}>
+                Continue Quiz
               </button>
             </div>
           </section>
