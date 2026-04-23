@@ -1,5 +1,13 @@
 const POSITION_WEIGHTS = [1, 0.78, 0.6];
 const VALID_RIASEC_CODES = ['R', 'I', 'A', 'S', 'E', 'C'];
+const PRIMARY_TYPE_SUMMARY = {
+  R: 'Performs hands-on, practical work that keeps operations running reliably.',
+  I: 'Investigates complex problems, analyzes information, and builds evidence-based solutions.',
+  A: 'Creates and refines ideas, content, or experiences with strong creative judgment.',
+  S: 'Supports, teaches, or cares for people through direct human interaction.',
+  E: 'Leads initiatives, drives outcomes, and aligns people around goals.',
+  C: 'Maintains structure, accuracy, and process quality across workflows.'
+};
 
 const WORK_STYLE_TRAITS = ['team_orientation', 'variety_preference', 'pressure_tolerance'];
 const CONSTRAINT_TRAITS = [
@@ -274,6 +282,98 @@ export function getTopCareerMatches(profile, limit = 3, options = {}) {
         first.title.localeCompare(second.title)
     )
     .slice(0, limit);
+}
+
+function getTitleBasedSummary(title) {
+  const normalizedTitle = String(title ?? '').toLowerCase();
+
+  if (normalizedTitle.includes('manager') || normalizedTitle.includes('supervisor')) {
+    return 'Coordinates priorities, aligns teams, and is accountable for delivery results.';
+  }
+
+  if (normalizedTitle.includes('analyst') || normalizedTitle.includes('scientist')) {
+    return 'Converts data and findings into recommendations that guide decisions.';
+  }
+
+  if (normalizedTitle.includes('engineer') || normalizedTitle.includes('technician')) {
+    return 'Builds, tests, and improves systems to increase reliability and performance.';
+  }
+
+  if (normalizedTitle.includes('designer') || normalizedTitle.includes('creator') || normalizedTitle.includes('producer')) {
+    return 'Shapes concepts into clear outputs that balance creativity with execution needs.';
+  }
+
+  if (normalizedTitle.includes('teacher') || normalizedTitle.includes('counselor') || normalizedTitle.includes('therapist')) {
+    return 'Guides people through learning, growth, and support-focused interactions.';
+  }
+
+  if (normalizedTitle.includes('sales') || normalizedTitle.includes('development') || normalizedTitle.includes('marketing')) {
+    return 'Engages stakeholders, communicates value, and drives measurable growth outcomes.';
+  }
+
+  return 'Executes core responsibilities that support team and business goals.';
+}
+
+function getWorkContextSummary(career) {
+  const teamOrientation = career?.workStyle?.team_orientation ?? 3;
+  const peopleFacing = career?.constraints?.people_facing_preference ?? 3;
+  const onsitePreference = career?.constraints?.onsite_preference ?? 3;
+
+  const segments = [];
+
+  if (teamOrientation >= 4) {
+    segments.push('high collaboration');
+  } else if (teamOrientation <= 2) {
+    segments.push('independent ownership');
+  } else {
+    segments.push('a balance of solo and team work');
+  }
+
+  if (peopleFacing >= 4) {
+    segments.push('frequent people interaction');
+  } else if (peopleFacing <= 2) {
+    segments.push('focus on systems and tasks');
+  }
+
+  if (onsitePreference >= 4) {
+    segments.push('mostly on-site execution');
+  } else if (onsitePreference <= 2) {
+    segments.push('good fit for remote/hybrid setups');
+  }
+
+  if (segments.length === 0) {
+    return 'Operates in a balanced work setting with mixed collaboration and execution styles.';
+  }
+
+  return `Typical work context includes ${segments.join(', ')}.`;
+}
+
+export function getCareerHighlights(career, limit = 3) {
+  if (!career) {
+    return [];
+  }
+
+  const highlights = [];
+  const primaryType = career.riasec?.[0];
+  const primarySummary = PRIMARY_TYPE_SUMMARY[primaryType];
+
+  if (primarySummary) {
+    highlights.push(primarySummary);
+  }
+
+  highlights.push(getTitleBasedSummary(career.title));
+  highlights.push(getWorkContextSummary(career));
+
+  const seen = new Set();
+  const unique = highlights.filter((entry) => {
+    if (!entry || seen.has(entry)) {
+      return false;
+    }
+    seen.add(entry);
+    return true;
+  });
+
+  return unique.slice(0, Math.max(1, limit));
 }
 
 export function getMatchConfidence(matches) {

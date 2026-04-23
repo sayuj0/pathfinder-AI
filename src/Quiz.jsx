@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
+  getCareerHighlights,
   getTopCareerMatches
 } from './careerClusters';
 import Particles from './Particles';
@@ -388,7 +389,7 @@ export default function Quiz() {
   }, [answersById, askedQuestionIds]);
 
   const resultsTopTypes = useMemo(() => getTopTypeMatches(profileSummary.riasecMeans), [profileSummary.riasecMeans]);
-  const exploreCareerMatches = useMemo(() => getTopCareerMatches(profileSummary, 8), [profileSummary]);
+  const exploreCareerMatches = useMemo(() => getTopCareerMatches(profileSummary, 3), [profileSummary]);
   const isFinalResults = profileSummary.answeredCount >= totalQuestions;
 
   const checkpointTopCareer = useMemo(() => getTopCareerMatches(profileSummary, 1)[0] ?? null, [profileSummary]);
@@ -594,11 +595,11 @@ export default function Quiz() {
                     <li key={career.title}>
                       <div>
                         <strong>{career.title}</strong>
-                        <p>
-                          {career.riasec.join('')} profile
-                          {' • '}
-                          Fit {(career.totalScore * 100).toFixed(0)}%
-                        </p>
+                        <ul className="quiz-explore__career-bullets" aria-label={`What ${career.title} does`}>
+                          {getCareerHighlights(career).map((bullet) => (
+                            <li key={`${career.title}-${bullet}`}>{bullet}</li>
+                          ))}
+                        </ul>
                       </div>
                       <span className="quiz-explore__rank">#{index + 1}</span>
                     </li>
