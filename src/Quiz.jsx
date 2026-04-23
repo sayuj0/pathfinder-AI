@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import emailjs from '@emailjs/browser';
 import {
@@ -35,6 +35,7 @@ const TYPE_NAMES = {
 const RIASEC_TYPES = ['R', 'I', 'A', 'S', 'E', 'C'];
 const CHECKPOINT_INDEX = 12;
 const BASE_QUESTION_COUNT = 24;
+const CHAT_API_PATH = '/api/chat';
 const EMAILJS_SERVICE_ID = import.meta.env.VITE_EMAILJS_SERVICE_ID || 'service_pathfinder';
 const EMAILJS_TEMPLATE_ID = import.meta.env.VITE_EMAILJS_TEMPLATE_ID || '';
 const EMAILJS_PUBLIC_KEY = import.meta.env.VITE_EMAILJS_PUBLIC_KEY || '';
@@ -396,6 +397,10 @@ function buildResultsEmailMessage(topTraits, careerMatches) {
   ].join('\n');
 }
 
+function buildInitialChatMessage() {
+  return 'Ask about salary, skills, or next steps.';
+}
+
 export default function Quiz() {
   const navigate = useNavigate();
   const [stage, setStage] = useState('question');
@@ -407,6 +412,10 @@ export default function Quiz() {
   const [resultsEmailNotice, setResultsEmailNotice] = useState('');
   const [resultsEmailNoticeType, setResultsEmailNoticeType] = useState('');
   const [isSendingResultsEmail, setIsSendingResultsEmail] = useState(false);
+  const [chatMessages, setChatMessages] = useState([]);
+  const [chatInput, setChatInput] = useState('');
+  const [chatNotice, setChatNotice] = useState('');
+  const [isSendingChat, setIsSendingChat] = useState(false);
   const totalQuestions = BASE_QUESTION_COUNT;
 
   const currentQuestionId = askedQuestionIds[currentStep];
@@ -427,6 +436,14 @@ export default function Quiz() {
   const resultsTopTypes = useMemo(() => getTopTypeMatches(profileSummary.riasecMeans), [profileSummary.riasecMeans]);
   const exploreCareerMatches = useMemo(() => getTopCareerMatches(profileSummary, 3), [profileSummary]);
   const isFinalResults = profileSummary.answeredCount >= totalQuestions;
+  const chatCareerContext = useMemo(
+    () =>
+      exploreCareerMatches.map((career) => ({
+        title: career.title,
+        highlights: getCareerHighlights(career)
+      })),
+    [exploreCareerMatches]
+  );
 
   const checkpointTopCareer = useMemo(() => getTopCareerMatches(profileSummary, 1)[0] ?? null, [profileSummary]);
 
@@ -436,6 +453,25 @@ export default function Quiz() {
     setResultsEmailNoticeType('');
     setIsSendingResultsEmail(false);
   };
+
+  const resetChatState = () => {
+    setChatMessages([
+      {
+        role: 'assistant',
+        content: buildInitialChatMessage()
+      }
+    ]);
+    setChatInput('');
+    setChatNotice('');
+    setIsSendingChat(false);
+  };
+
+  useEffect(() => {
+    if (stage === 'results') {
+      resetChatState();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stage, chatCareerContext]);
 
   const handleReset = () => {
     const initialQuestionIds = createInitialQuestionIds();
@@ -569,6 +605,63 @@ export default function Quiz() {
       });
   };
 
+  const handleChatSubmit = async (event) => {
+    event.preventDefault();
+    const message = chatInput.trim();
+
+    if (!message || isSendingChat) {
+      return;
+    }
+
+    const userMessage = { role: 'user', content: message };
+    const historyForRequest = [...chatMessages, userMessage];
+
+    setChatMessages(historyForRequest);
+    setChatInput('');
+    setChatNotice('');
+    setIsSendingChat(true);
+
+    try {
+      const response = await fetch(CHAT_API_PATH, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          message,
+          history: historyForRequest.slice(-10),
+          topTraits: resultsTopTypes.map((trait) => trait.name),
+          careerMatches: chatCareerContext
+        })
+      });
+
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Chat request failed.');
+      }
+
+      const reply = String(payload?.reply ?? '').trim();
+      if (!reply) {
+        throw new Error('Chat service returned an empty response.');
+      }
+
+      setChatMessages((previous) => [...previous, { role: 'assistant', content: reply }]);
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unable to send your message right now.';
+      setChatMessages((previous) => [
+        ...previous,
+        {
+          role: 'assistant',
+          content: `I could not complete that request. ${errorMessage}`
+        }
+      ]);
+      setChatNotice(errorMessage);
+    } finally {
+      setIsSendingChat(false);
+    }
+  };
+
   return (
     <div className="quiz-page">
       <div className="quiz-page__background" aria-hidden="true">
@@ -623,9 +716,9 @@ export default function Quiz() {
 
         {stage === 'results' && (
           <section className="quiz-card quiz-card--explore" aria-labelledby="quiz-explore-title">
-            <div className="quiz-explore__layout">
+              <div className="quiz-explore__layout">
               <div className="quiz-explore__left-column">
-                <section className="quiz-explore__panel">
+                <section className="quiz-explore__panel quiz-explore__profile-panel">
                   <p className="quiz-explore__eyebrow">{isFinalResults ? 'Assessment Complete' : 'Checkpoint Profile'}</p>
                   <h2 id="quiz-explore-title">Your Career Profile</h2>
                   <p className="quiz-explore__subcopy">Based on {profileSummary.answeredCount} questions</p>
@@ -648,32 +741,39 @@ export default function Quiz() {
 
                 <section className="quiz-explore__panel quiz-explore__chatbot-panel" aria-labelledby="quiz-chatbot-title">
                   <h3 id="quiz-chatbot-title">Career Chatbot</h3>
-                  <p className="quiz-explore__subcopy">
-                    AI integration placeholder. You can wire your own assistant logic here later.
-                  </p>
                   <div className="quiz-explore__chatbot-window" aria-live="polite">
-                    <p className="quiz-explore__chatbot-message quiz-explore__chatbot-message--assistant">
-                      I&apos;ll help you compare your matches once the AI backend is connected.
-                    </p>
-                    <p className="quiz-explore__chatbot-message quiz-explore__chatbot-message--user">
-                      Which of my top matches fits remote work best?
-                    </p>
+                    {chatMessages.map((entry, index) => (
+                      <p
+                        key={`${entry.role}-${index}`}
+                        className={`quiz-explore__chatbot-message ${
+                          entry.role === 'assistant'
+                            ? 'quiz-explore__chatbot-message--assistant'
+                            : 'quiz-explore__chatbot-message--user'
+                        }`}
+                      >
+                        {entry.content}
+                      </p>
+                    ))}
+                    {isSendingChat && (
+                      <p className="quiz-explore__chatbot-message quiz-explore__chatbot-message--assistant">
+                        Thinking...
+                      </p>
+                    )}
                   </div>
-                  <form
-                    className="quiz-explore__chatbot-input-row"
-                    onSubmit={(event) => event.preventDefault()}
-                    aria-label="Chatbot input placeholder"
-                  >
+                  <form className="quiz-explore__chatbot-input-row" onSubmit={handleChatSubmit}>
                     <input
                       type="text"
-                      disabled
-                      placeholder="Chat input placeholder"
+                      value={chatInput}
+                      onChange={(event) => setChatInput(event.target.value)}
+                      placeholder="Ask about salary, skills, or next steps."
                       aria-label="Chat input"
+                      disabled={isSendingChat}
                     />
-                    <button className="quiz-button" type="submit" disabled>
-                      Send
+                    <button className="quiz-button" type="submit" disabled={isSendingChat || !chatInput.trim()}>
+                      {isSendingChat ? 'Sending...' : 'Send'}
                     </button>
                   </form>
+                  {chatNotice && <p className="quiz-explore__chatbot-notice">{chatNotice}</p>}
                 </section>
 
                 <div className="quiz-explore__actions">
