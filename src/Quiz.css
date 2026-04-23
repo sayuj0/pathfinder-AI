@@ -387,6 +387,59 @@
   border: 1px solid rgba(255, 143, 194, 0.34);
 }
 
+.quiz-explore__email-card {
+  margin-top: 14px;
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 143, 194, 0.2);
+  background: rgba(159, 48, 97, 0.12);
+}
+
+.quiz-explore__email-card h4 {
+  margin: 0;
+  font-size: 1.05rem;
+  color: #ffe9f4;
+}
+
+.quiz-explore__email-card p {
+  margin: 6px 0 0;
+  color: var(--quiz-ink-muted);
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.quiz-explore__email-form {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+
+.quiz-explore__email-form input {
+  min-height: 42px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 143, 194, 0.26);
+  background: rgba(11, 5, 10, 0.58);
+  color: #ffd9eb;
+  padding: 0 12px;
+  font-size: 0.92rem;
+}
+
+.quiz-explore__email-form input::placeholder {
+  color: rgba(255, 215, 234, 0.55);
+}
+
+.quiz-explore__email-form input:focus-visible {
+  outline: 2px solid #ffd9eb;
+  outline-offset: 2px;
+}
+
+.quiz-explore__email-notice {
+  margin-top: 8px;
+  font-size: 0.86rem;
+  color: rgba(255, 215, 234, 0.9);
+}
+
 .quiz-card__scale-list {
   margin: 20px 0 0;
   padding: 0;

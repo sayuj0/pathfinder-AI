@@ -371,6 +371,8 @@ export default function Quiz() {
   const [answersById, setAnswersById] = useState({});
   const [askedQuestionIds, setAskedQuestionIds] = useState(() => createInitialQuestionIds());
   const [checkpointCount, setCheckpointCount] = useState(0);
+  const [resultsEmail, setResultsEmail] = useState('');
+  const [resultsEmailNotice, setResultsEmailNotice] = useState('');
   const totalQuestions = BASE_QUESTION_COUNT;
 
   const currentQuestionId = askedQuestionIds[currentStep];
@@ -456,6 +458,24 @@ export default function Quiz() {
 
     setStage('question');
     setCurrentStep((previous) => previous - 1);
+  };
+
+  const handleEmailCopySubmit = (event) => {
+    event.preventDefault();
+    const email = resultsEmail.trim();
+
+    if (!email) {
+      setResultsEmailNotice('Enter an email address to continue.');
+      return;
+    }
+
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailPattern.test(email)) {
+      setResultsEmailNotice('Enter a valid email address.');
+      return;
+    }
+
+    setResultsEmailNotice(`Ready to send to ${email}. Connect your email backend to enable delivery.`);
   };
 
   return (
@@ -605,6 +625,29 @@ export default function Quiz() {
                     </li>
                   ))}
                 </ul>
+
+                <div className="quiz-explore__email-card" aria-labelledby="quiz-email-copy-title">
+                  <h4 id="quiz-email-copy-title">Want a copy?</h4>
+                  <p>Email your top matches to yourself so you can review them later.</p>
+                  <form className="quiz-explore__email-form" onSubmit={handleEmailCopySubmit}>
+                    <input
+                      type="email"
+                      value={resultsEmail}
+                      onChange={(event) => {
+                        setResultsEmail(event.target.value);
+                        if (resultsEmailNotice) {
+                          setResultsEmailNotice('');
+                        }
+                      }}
+                      placeholder="you@example.com"
+                      aria-label="Email address"
+                    />
+                    <button className="quiz-button" type="submit">
+                      Send
+                    </button>
+                  </form>
+                  {resultsEmailNotice && <p className="quiz-explore__email-notice">{resultsEmailNotice}</p>}
+                </div>
               </section>
             </div>
           </section>
