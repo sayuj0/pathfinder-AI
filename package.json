@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "dev:server": "node server/index.js",
+    "test:unit": "node tests/unit_select_next_question.mjs",
     "build": "vite build",
     "preview": "vite preview"
   },
