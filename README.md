@@ -111,14 +111,6 @@ python -m pytest tests/test_quiz_random.py -q
 
 Video example:
 
-<video src="images/test1.mp4" controls></video>
-
-If your Markdown viewer does not render video, open [video example](images/test1.mp4).
-
-Example:
-
-![Test 2 - Logic Test](images/test2.png)
-
 ### 2) Unit test
 
 This test checks `selectNextQuestion` behavior in isolation.
