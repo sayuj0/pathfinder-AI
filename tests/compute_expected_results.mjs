@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import { QUESTIONS, CONSTRAINT_TRAITS, WORK_STYLE_TRAITS } from '../src/questions.js';
 import { getTopCareerMatches } from '../src/careerClusters.js';
 
@@ -108,12 +109,15 @@ function getTopTypeMatches(riasecMeans) {
 }
 
 function main() {
-  const payloadRaw = process.argv[2];
+  const payloadFromArg = process.argv[2];
+  const payloadFromStdin = process.stdin.isTTY ? '' : fs.readFileSync(0, 'utf8');
+  const payloadRaw = payloadFromArg ?? payloadFromStdin;
+
   if (!payloadRaw) {
-    throw new Error('Missing JSON payload argument.');
+    throw new Error('Missing JSON payload. Pass as argv[2] or pipe through stdin.');
   }
 
-  const answerRows = JSON.parse(payloadRaw);
+  const answerRows = JSON.parse(String(payloadRaw).trim());
   const profile = getProfileFromAnswers(answerRows);
 
   const topTraits = getTopTypeMatches(profile.riasecMeans);
