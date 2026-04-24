@@ -111,6 +111,8 @@ python -m pytest tests/test_quiz_random.py -q
 
 Video example:
 
+https://github.com/user-attachments/assets/e02d33bf-bdf1-48f9-8cdb-2ff32fdf73ab
+
 ### 2) Unit test
 
 This test checks `selectNextQuestion` behavior in isolation.
