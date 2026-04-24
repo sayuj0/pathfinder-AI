@@ -2,33 +2,8 @@
 
 Career quiz app built with an adaptive RIASEC algorithm that tailors question flow to each user, identifies and ranks top career matches, and includes AI-guided exploration for salary, skills, education, and next steps.
 
-## Prerequisites
-
-- Node.js 18+
-- npm
-- Python 3.10+
-- Google Chrome or Microsoft Edge (for Selenium test)
-- A matching WebDriver available locally (`chromedriver` or `msedgedriver`) if Selenium Manager cannot download one
-
-## Install
-
-```powershell
-npm install
-```
-
-## Run The App
-
-Frontend:
-
-```powershell
-npm run dev -- --host 127.0.0.1 --port 5173
-```
-
-Optional chat backend:
-
-```powershell
-npm run dev:server
-```
+![Results](images/results.png)
+![Quiz](images/quiz.png)
 
 ## Run With Docker
 
@@ -52,7 +27,37 @@ Notes:
 - Put `GEMINI_API_KEY` in your local `.env` before starting if you want AI chat enabled.
 - The frontend container proxies `/api/*` to the chat container automatically.
 
-## AI Integration (Important)
+## Run Without Docker
+
+1. Start frontend:
+
+```powershell
+npm run dev -- --host 127.0.0.1 --port 5173
+```
+
+2. In a second terminal, start chat backend (required):
+
+```powershell
+npm run dev:server
+```
+
+## Prerequisites (Without Docker)
+
+Use these only when running without Docker.
+
+- Node.js 18+
+- npm
+- Python 3.10+
+- Google Chrome or Microsoft Edge (for Selenium test)
+- A matching WebDriver available locally (`chromedriver` or `msedgedriver`) if Selenium Manager cannot download one
+
+## Install
+
+```powershell
+npm install
+```
+
+## AI Integration
 
 The AI chatbot is a core feature of this app.
 
@@ -84,19 +89,7 @@ npm run dev:server
 
 ## Tests
 
-### 1) Unit test (logic only)
-
-This test checks `selectNextQuestion` behavior in isolation.
-
-File: `tests/unit_select_next_question.mjs`
-
-Run:
-
-```powershell
-npm run test:unit
-```
-
-### 2) Selenium + pytest (UI automation)
+### 1) Selenium + pytest (UI automation)
 
 This test:
 
@@ -115,6 +108,32 @@ Run:
 ```powershell
 python -m pytest tests/test_quiz_random.py -q
 ```
+
+Video example:
+
+<video src="images/test1.mp4" controls></video>
+
+If your Markdown viewer does not render video, open [video example](images/test1.mp4).
+
+Example:
+
+![Test 2 - Logic Test](images/test2.png)
+
+### 2) Unit test
+
+This test checks `selectNextQuestion` behavior in isolation.
+
+File: `tests/unit_select_next_question.mjs`
+
+Run:
+
+```powershell
+npm run test:unit
+```
+
+Example:
+
+![Test 3 - Unit Test](images/test3.png)
 
 ### Selenium test environment variables
 
