@@ -1,6 +1,6 @@
 # PathFinder AI
 
-Career quiz app built with an adaptive RIASEC algorithm that tailors question flow to each user, identifies and ranks top career matches, and includes AI-guided exploration for salary, skills, education, and next steps.
+An adaptive career discovery app that personalizes RIASEC quiz flow and connects results to secure AI-guided career exploration.
 
 ![Results](images/results.png)
 ![Quiz](images/quiz.png)
