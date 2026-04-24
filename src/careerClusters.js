@@ -123,6 +123,16 @@ function normalizeLikert(value) {
   return clamp01((Math.min(5, Math.max(1, safeValue)) - 1) / 4);
 }
 
+/**
+ * Merges a partial profile into the full expected scoring shape.
+ *
+ * @param {unknown} profile
+ * @returns {{
+ *   riasecMeans: Record<string, number>,
+ *   workStyleMeans: Record<string, number>,
+ *   constraintMeans: Record<string, number>
+ * }}
+ */
 function getSafeProfile(profile) {
   return {
     riasecMeans: { ...DEFAULT_PROFILE.riasecMeans, ...(profile?.riasecMeans ?? {}) },
@@ -147,6 +157,17 @@ function getDefaultMetrics() {
   };
 }
 
+/**
+ * Loads persisted recommendation metrics with backward-safe defaults.
+ *
+ * @returns {{
+ *   version:number,
+ *   sessions:number,
+ *   top3AcceptanceSum:number,
+ *   top3AcceptanceRate:number,
+ *   weightProfiles: Record<string, {trials:number, scoreSum:number}>
+ * }}
+ */
 function loadMetrics() {
   if (typeof window === 'undefined' || !window.localStorage) {
     return getDefaultMetrics();
@@ -173,6 +194,12 @@ function loadMetrics() {
   }
 }
 
+/**
+ * Persists metrics best-effort; failures are intentionally non-blocking.
+ *
+ * @param {ReturnType<typeof getDefaultMetrics>} metrics
+ * @returns {void}
+ */
 function saveMetrics(metrics) {
   if (typeof window === 'undefined' || !window.localStorage) {
     return;
@@ -220,6 +247,13 @@ export function getActiveWeightProfileId() {
   return bestProfileId;
 }
 
+/**
+ * Scores alignment between a user RIASEC profile and a career RIASEC ordering.
+ *
+ * @param {unknown} profile
+ * @param {{riasec:string[]}} career
+ * @returns {number}
+ */
 function getRiasecFit(profile, career) {
   const safeProfile = getSafeProfile(profile);
   const totalWeight = career.riasec.reduce((sum, _typeCode, index) => sum + (POSITION_WEIGHTS[index] ?? 0), 0);
@@ -237,6 +271,14 @@ function getRiasecFit(profile, career) {
   return weightedScore / totalWeight;
 }
 
+/**
+ * Computes average trait similarity between user means and career expectations.
+ *
+ * @param {Record<string, number>} userMeans
+ * @param {Record<string, number>} careerProfile
+ * @param {string[]} traitKeys
+ * @returns {number}
+ */
 function getTraitFit(userMeans, careerProfile, traitKeys) {
   if (traitKeys.length === 0) {
     return 0.5;
@@ -250,7 +292,16 @@ function getTraitFit(userMeans, careerProfile, traitKeys) {
 
   return sum / traitKeys.length;
 }
-
+/**
+ * Returns the top career matches for a given user profile.
+ *
+ * Uses weighted fit across RIASEC, work style, and constraint traits.
+ *
+ * @param {Object} profile - User profile with means for each trait.
+ * @param {number} [limit=3] - Number of top matches to return.
+ * @param {Object} [options] - Optional settings (e.g., weight profile).
+ * @returns {Array<Object>} Sorted array of top-matching career objects.
+ */
 export function getTopCareerMatches(profile, limit = 3, options = {}) {
   const safeProfile = getSafeProfile(profile);
   const selectedProfileId = options.weightProfileId ?? getActiveWeightProfileId();
@@ -348,6 +399,13 @@ function getWorkContextSummary(career) {
   return `Typical work context includes ${segments.join(', ')}.`;
 }
 
+/**
+ * Builds concise, de-duplicated highlight bullets for a matched career.
+ *
+ * @param {object} career
+ * @param {number} [limit=3]
+ * @returns {string[]}
+ */
 export function getCareerHighlights(career, limit = 3) {
   if (!career) {
     return [];
@@ -376,6 +434,17 @@ export function getCareerHighlights(career, limit = 3) {
   return unique.slice(0, Math.max(1, limit));
 }
 
+/**
+ * Estimates confidence using top-rank separation and internal fit consistency.
+ *
+ * @param {Array<{
+ *   totalScore:number,
+ *   riasecFit:number,
+ *   workStyleFit:number,
+ *   constraintFit:number
+ * }>} matches
+ * @returns {number}
+ */
 export function getMatchConfidence(matches) {
   if (!matches || matches.length === 0) {
     return 0;
@@ -410,6 +479,13 @@ export function getConfidenceLabel(confidence) {
   return 'High confidence';
 }
 
+/**
+ * Evaluates each weight profile by checkpoint/final top-3 overlap.
+ *
+ * @param {unknown} checkpointProfile
+ * @param {unknown} finalProfile
+ * @returns {Array<{profileId:string,score:number}>}
+ */
 export function evaluateWeightProfiles(checkpointProfile, finalProfile) {
   return WEIGHT_PROFILES.map((profile) => {
     const checkpointTop3 = getTopCareerMatches(checkpointProfile, 3, {
@@ -426,6 +502,16 @@ export function evaluateWeightProfiles(checkpointProfile, finalProfile) {
   });
 }
 
+/**
+ * Updates long-term recommendation metrics for one quiz session.
+ *
+ * @param {{
+ *   checkpointTop3?: string[],
+ *   finalTop3?: string[],
+ *   profileEvaluations?: Array<{profileId:string,score:number}>
+ * }} params
+ * @returns {ReturnType<typeof getDefaultMetrics>}
+ */
 export function recordSessionMetrics({ checkpointTop3 = [], finalTop3 = [], profileEvaluations = [] }) {
   const metrics = loadMetrics();
   const acceptanceScore = getTop3OverlapRatio(checkpointTop3, finalTop3);

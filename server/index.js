@@ -8,6 +8,12 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
 
+/**
+ * Loads `.env` values into `process.env` without overriding existing runtime vars.
+ * Supports basic quoted values and ignores malformed/commented lines.
+ *
+ * @returns {void}
+ */
 function loadEnvFile() {
   const envPath = path.join(rootDir, '.env');
   if (!fs.existsSync(envPath)) {
@@ -57,6 +63,12 @@ const MAX_BODY_BYTES = 30 * 1024;
 
 const rateLimitStore = new Map();
 
+/**
+ * Resolves best-effort client IP from proxy header or socket.
+ *
+ * @param {import('node:http').IncomingMessage} req
+ * @returns {string}
+ */
 function getClientIp(req) {
   const forwardedFor = req.headers['x-forwarded-for'];
   if (typeof forwardedFor === 'string' && forwardedFor.trim()) {
@@ -66,6 +78,15 @@ function getClientIp(req) {
   return req.socket.remoteAddress || 'unknown';
 }
 
+/**
+ * Gets an active per-IP bucket for the given window key, or creates a fresh one
+ * when missing or expired.
+ *
+ * @param {string} ip
+ * @param {'minute' | 'day' | 'tokenMinute'} key
+ * @param {number} windowMs
+ * @returns {{count:number,resetAt:number}}
+ */
 function getRateLimitState(ip, key, windowMs) {
   const now = Date.now();
   const existing = rateLimitStore.get(ip);
@@ -84,6 +105,27 @@ function getRateLimitState(ip, key, windowMs) {
   return bucket;
 }
 
+/**
+ * Consumes one request from all relevant rate-limit buckets and returns
+ * enforcement/telemetry data for headers and response payloads.
+ *
+ * @param {string} ip
+ * @param {number} estimatedTokens
+ * @returns {{
+ *   limited:boolean,
+ *   minuteLimited:boolean,
+ *   dayLimited:boolean,
+ *   tokenMinuteLimited:boolean,
+ *   remainingMinute:number,
+ *   remainingDay:number,
+ *   remainingTokensPerMinute:number,
+ *   resetAt:number,
+ *   resetAtMinute:number,
+ *   resetAtDay:number,
+ *   resetAtTokenMinute:number,
+ *   retryAfterMs:number
+ * }}
+ */
 function useRateLimit(ip, estimatedTokens) {
   const safeEstimatedTokens = Math.max(1, Number.isFinite(estimatedTokens) ? Math.floor(estimatedTokens) : 1);
   const minuteBucket = getRateLimitState(ip, 'minute', RATE_LIMIT_MINUTE_WINDOW_MS);
@@ -132,6 +174,15 @@ function useRateLimit(ip, estimatedTokens) {
   };
 }
 
+/**
+ * Writes a JSON API response with shared CORS/cache headers.
+ *
+ * @param {import('node:http').ServerResponse} res
+ * @param {number} statusCode
+ * @param {unknown} data
+ * @param {Record<string, string>} [extraHeaders]
+ * @returns {void}
+ */
 function writeJson(res, statusCode, data, extraHeaders = {}) {
   res.writeHead(statusCode, {
     'Content-Type': 'application/json; charset=utf-8',
@@ -144,6 +195,12 @@ function writeJson(res, statusCode, data, extraHeaders = {}) {
   res.end(JSON.stringify(data));
 }
 
+/**
+ * Reads and parses a request body as JSON, enforcing max byte size.
+ *
+ * @param {import('node:http').IncomingMessage} req
+ * @returns {Promise<Record<string, unknown>>}
+ */
 function readJsonBody(req) {
   return new Promise((resolve, reject) => {
     let body = '';
@@ -173,6 +230,12 @@ function readJsonBody(req) {
   });
 }
 
+/**
+ * Normalizes model-context career matches to a small, predictable payload.
+ *
+ * @param {unknown} rawCareerMatches
+ * @returns {Array<{title:string,highlights:string[]}>}
+ */
 function normalizeCareerMatches(rawCareerMatches) {
   if (!Array.isArray(rawCareerMatches)) {
     return [];
@@ -189,6 +252,18 @@ function normalizeCareerMatches(rawCareerMatches) {
     .filter((entry) => entry.title);
 }
 
+/**
+ * Estimates token usage from message + context so token-per-minute limiting can
+ * be applied before upstream API calls.
+ *
+ * @param {{
+ *   message: unknown,
+ *   history: unknown,
+ *   topTraits: unknown,
+ *   careerMatches: unknown
+ * }} params
+ * @returns {number}
+ */
 function estimateTokenCount({ message, history, topTraits, careerMatches }) {
   const historyText = Array.isArray(history)
     ? history

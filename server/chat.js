@@ -1,6 +1,13 @@
 const DEFAULT_MODEL = 'gemini-2.5-flash-lite';
 const MAX_HISTORY_MESSAGES = 10;
 
+/**
+ * Converts UI chat history into Gemini `contents` format while trimming to a
+ * bounded window and dropping empty messages.
+ *
+ * @param {unknown} history
+ * @returns {Array<{role:'user'|'model',parts:Array<{text:string}>}>}
+ */
 function clampHistory(history) {
   if (!Array.isArray(history)) {
     return [];
@@ -23,6 +30,13 @@ function clampHistory(history) {
     .filter(Boolean);
 }
 
+/**
+ * Builds the fixed system instruction with profile context injected at the end.
+ *
+ * @param {unknown[]} topTraits
+ * @param {unknown[]} careerMatches
+ * @returns {string}
+ */
 function buildSystemPrompt(topTraits, careerMatches) {
   const traits = Array.isArray(topTraits) ? topTraits.filter(Boolean).join(', ') : '';
   const careers = Array.isArray(careerMatches)
@@ -67,6 +81,12 @@ function buildSystemPrompt(topTraits, careerMatches) {
   ].join('\n');
 }
 
+/**
+ * Extracts generated text from the first Gemini candidate payload.
+ *
+ * @param {unknown} payload
+ * @returns {string}
+ */
 function extractReplyText(payload) {
   const parts = payload?.candidates?.[0]?.content?.parts;
   if (!Array.isArray(parts)) {
@@ -80,6 +100,13 @@ function extractReplyText(payload) {
     .trim();
 }
 
+/**
+ * Removes verbose tails and markdown-like artifacts to keep replies concise
+ * and plain-text.
+ *
+ * @param {unknown} reply
+ * @returns {string}
+ */
 function sanitizeReplyText(reply) {
   const text = String(reply ?? '').trim();
   if (!text) {
@@ -97,6 +124,13 @@ function sanitizeReplyText(reply) {
   return cleaned;
 }
 
+/**
+ * Maps Gemini API errors to user-facing messages with friendlier rate-limit text.
+ *
+ * @param {number} statusCode
+ * @param {unknown} apiMessage
+ * @returns {string}
+ */
 function formatGeminiError(statusCode, apiMessage) {
   const message = String(apiMessage ?? '').trim();
   const normalized = message.toLowerCase();
@@ -113,6 +147,20 @@ function formatGeminiError(statusCode, apiMessage) {
   return message || `Gemini request failed with status ${statusCode}.`;
 }
 
+/**
+ * Sends a user prompt + context to Gemini and returns a sanitized text reply.
+ *
+ * @param {{
+ *   apiKey: string,
+ *   message: unknown,
+ *   history?: unknown[],
+ *   topTraits?: unknown[],
+ *   careerMatches?: unknown[],
+ *   model?: string,
+ *   timeoutMs?: number
+ * }} params
+ * @returns {Promise<string>}
+ */
 export async function requestGeminiReply({
   apiKey,
   message,

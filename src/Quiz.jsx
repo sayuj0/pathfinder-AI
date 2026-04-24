@@ -78,6 +78,12 @@ const QUESTIONS_BY_CATEGORY = QUESTIONS.reduce((grouped, question) => {
 }, {});
 const NORMALIZE_TEXT_PATTERN = /[^a-z0-9 ]/g;
 
+/**
+ * Normalizes question text so semantically identical prompts can be de-duplicated.
+ *
+ * @param {unknown} text
+ * @returns {string}
+ */
 function normalizeQuestionText(text) {
   return String(text).toLowerCase().replace(NORMALIZE_TEXT_PATTERN, '').replace(/\s+/g, ' ').trim();
 }
@@ -86,6 +92,20 @@ function reverseIfNeeded(question, value) {
   return question.reverse ? 6 - value : value;
 }
 
+/**
+ * Creates the neutral baseline profile used before answers are accumulated.
+ *
+ * @returns {{
+ *   riasecMeans: Record<string, number>,
+ *   workStyleMeans: Record<string, number>,
+ *   constraintMeans: Record<string, number>,
+ *   riasecSums: Record<string, number>,
+ *   riasecCounts: Record<string, number>,
+ *   workStyleCounts: Record<string, number>,
+ *   constraintCounts: Record<string, number>,
+ *   answeredCount: number
+ * }}
+ */
 function getInitialProfile() {
   return {
     riasecMeans: { R: 3, I: 3, A: 3, S: 3, E: 3, C: 3 },
@@ -108,6 +128,16 @@ function getInitialProfile() {
   };
 }
 
+/**
+ * Computes the user's profile summary from their answers.
+ *
+ * Aggregates RIASEC, work style, and constraint means and counts.
+ * Handles reverse scoring and missing data.
+ *
+ * @param {number[]} questionIds - Array of answered question IDs.
+ * @param {Object} answersById - Map of question ID to answer value.
+ * @returns {Object} Profile summary with means and counts for each trait.
+ */
 function getProfileFromAnswers(questionIds, answersById) {
   const summary = getInitialProfile();
 
@@ -167,6 +197,17 @@ function getTopTypeMatches(riasecMeans) {
     }));
 }
 
+/**
+ * Builds adaptive-selection context from asked questions and current answers.
+ *
+ * @param {number[]} askedQuestionIds
+ * @param {Record<number, number>} answersById
+ * @returns {{
+ *   profile: ReturnType<typeof getProfileFromAnswers>,
+ *   interestCountsByType: Record<string, number>,
+ *   postCheckpointInterestTypes: string[]
+ * }}
+ */
 function getQuestionContext(askedQuestionIds, answersById) {
   const profile = getProfileFromAnswers(askedQuestionIds, answersById);
   const interestCountsByType = Object.fromEntries(RIASEC_TYPES.map((typeCode) => [typeCode, 0]));
@@ -199,6 +240,16 @@ function getQuestionSeed(askedQuestionIds, extra = 0) {
   return askedQuestionIds.reduce((sum, questionId, index) => sum + questionId * (index + 3), 17) + extra;
 }
 
+/**
+ * Chooses the next trait question by combining measurement uncertainty and
+ * coverage balance, then deterministic tie-breaking.
+ *
+ * @param {Array<{id:number,trait:string}>} candidates
+ * @param {Record<string, number>} traitMeans
+ * @param {Record<string, number>} traitCounts
+ * @param {number[]} askedQuestionIds
+ * @returns {{id:number,trait:string}|null}
+ */
 function pickByTraitUncertainty(candidates, traitMeans, traitCounts, askedQuestionIds) {
   if (candidates.length === 0) {
     return null;
@@ -221,6 +272,17 @@ function pickByTraitUncertainty(candidates, traitMeans, traitCounts, askedQuesti
   return topBand[getDeterministicIndex(seed, topBand.length)];
 }
 
+/**
+ * Selects an interest question with phase-specific logic.
+ * Pre-checkpoint: equalize type coverage.
+ * Post-checkpoint: alternate focus and non-focus types for better separation.
+ *
+ * @param {Array<{id:number,type?:string}>} candidates
+ * @param {ReturnType<typeof getQuestionContext>} context
+ * @param {number[]} askedQuestionIds
+ * @param {number} nextStepIndex
+ * @returns {{id:number,type?:string}|null}
+ */
 function selectInterestQuestion(candidates, context, askedQuestionIds, nextStepIndex) {
   if (candidates.length === 0) {
     return null;
@@ -259,6 +321,15 @@ function selectInterestQuestion(candidates, context, askedQuestionIds, nextStepI
   return selected;
 }
 
+/**
+ * Prefers disambiguation prompts that match currently top-ranked careers,
+ * then falls back to trait-uncertainty selection.
+ *
+ * @param {Array<{targets?:string[]}>} candidates
+ * @param {ReturnType<typeof getQuestionContext>} context
+ * @param {number[]} askedQuestionIds
+ * @returns {object|null}
+ */
 function selectDisambiguationQuestion(candidates, context, askedQuestionIds) {
   if (candidates.length === 0) {
     return null;
@@ -302,6 +373,16 @@ function chooseCategoryForStep(stepIndex) {
   return null;
 }
 
+/**
+ * Determines the next question ID to ask based on quiz progress and category plan.
+ *
+ * Applies category logic, deduplication, and adaptive selection for each step.
+ *
+ * @param {number[]} askedQuestionIds - IDs of questions already asked.
+ * @param {Object} answersById - Map of question ID to answer value.
+ * @param {number} stepIndex - Current step index in the quiz.
+ * @returns {number|null} Next question ID or null if finished.
+ */
 function getNextQuestionId(askedQuestionIds, answersById, stepIndex) {
   const context = getQuestionContext(askedQuestionIds, answersById);
   const category = chooseCategoryForStep(stepIndex);
@@ -369,6 +450,13 @@ function createInitialQuestionIds() {
   return firstQuestion ? [firstQuestion.id] : [];
 }
 
+/**
+ * Formats a plain-text message sent in the results email.
+ *
+ * @param {Array<{name:string}>} topTraits
+ * @param {Array<{title:string}>} careerMatches
+ * @returns {string}
+ */
 function buildResultsEmailMessage(topTraits, careerMatches) {
   const traitSection =
     topTraits.length > 0 ? topTraits.map((trait) => trait.name).join('\n') : 'No top traits available yet.';

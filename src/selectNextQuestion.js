@@ -73,20 +73,22 @@ function getQuestionDiscrimination(question) {
 }
 
 /**
- * Selects next question using adaptive priorities:
- * - uncertainty (fewer asked in a type => higher priority)
- * - closeness to current top score (better rank separation)
- * - coverage balance (avoid over-asking same type)
- * - low-score boost (still explores weak dimensions)
+ * Selects the next question to ask using a multi-factor adaptive algorithm.
  *
- * Within the chosen type, prefers high-discrimination questions
- * with deterministic variety.
+ * Prioritizes question types based on:
+ * - Uncertainty (types with fewer questions asked get higher priority)
+ * - Closeness to current top score (to better separate top types)
+ * - Coverage balance (avoids over-asking the same type)
+ * - Low-score boost (explores weak dimensions)
+ * - Response style match (matches user style to type)
  *
- * @param {Array<{id:number,type:string,discrimination?:number,weight?:number}>} availableQuestions
- * @param {number[]} askedQuestionIds
- * @param {Record<string, number>} riasecScores
- * @param {{allowedTypes?: string[]}} [options]
- * @returns {{id:number,type:string,discrimination?:number,weight?:number}|null}
+ * Within the chosen type, prefers high-discrimination questions with deterministic variety.
+ *
+ * @param {Array<{id:number,type:string,discrimination?:number,weight?:number}>} availableQuestions - List of available questions.
+ * @param {number[]} askedQuestionIds - IDs of questions already asked.
+ * @param {Record<string, number>} riasecScores - Current RIASEC scores.
+ * @param {{allowedTypes?: string[]}} [options] - Optional filter for allowed types.
+ * @returns {{id:number,type:string,discrimination?:number,weight?:number}|null} The next question object or null if none available.
  */
 export function selectNextQuestion(availableQuestions, askedQuestionIds, riasecScores, options = {}) {
   const askedIdSet = new Set(askedQuestionIds);
