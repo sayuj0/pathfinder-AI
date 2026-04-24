@@ -14,7 +14,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
 BASE_URL = os.getenv('FRONTEND_URL', 'http://127.0.0.1:5173')
-WAIT_SECONDS = int(os.getenv('SELENIUM_WAIT_SECONDS', '12'))
+WAIT_SECONDS = int(os.getenv('SELENIUM_WAIT_SECONDS', '0'))
 RUNS = int(os.getenv('RANDOM_RUNS', '10'))
 RANDOM_SEED = os.getenv('RANDOM_SEED')
 SELENIUM_BROWSER = os.getenv('SELENIUM_BROWSER', 'chrome').strip().lower()
@@ -54,20 +54,40 @@ def driver():
     browser.quit()
 
 
+def _find_element(browser, wait, by, selector, *, clickable=False):
+    if wait is None:
+        return browser.find_element(by, selector)
+    condition = (
+        EC.element_to_be_clickable((by, selector))
+        if clickable
+        else EC.visibility_of_element_located((by, selector))
+    )
+    return wait.until(condition)
+
+
+def _find_elements(browser, wait, by, selector):
+    if wait is None:
+        return browser.find_elements(by, selector)
+    return wait.until(EC.presence_of_all_elements_located((by, selector)))
+
+
 def _start_quiz(browser, wait):
     browser.get(BASE_URL)
-    wait.until(EC.element_to_be_clickable((By.LINK_TEXT, 'Start Quiz'))).click()
-    wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, '.quiz-card__question-text')))
+    _find_element(browser, wait, By.LINK_TEXT, 'Start Quiz', clickable=True).click()
+    _find_element(browser, wait, By.CSS_SELECTOR, '.quiz-card__question-text')
 
 
 def _choose_random_answer(browser, wait, rng):
-    question_text = wait.until(
-        EC.visibility_of_element_located((By.CSS_SELECTOR, '.quiz-card__question-text'))
+    question_text = _find_element(
+        browser, wait, By.CSS_SELECTOR, '.quiz-card__question-text'
     ).text.strip()
 
-    options = wait.until(
-        EC.presence_of_all_elements_located((By.CSS_SELECTOR, '.quiz-card__options .quiz-option'))
-    )
+    options = _find_elements(browser, wait, By.CSS_SELECTOR, '.quiz-card__options .quiz-option')
+    if not options:
+        pytest.fail(
+            'No quiz options were found. '
+            'Set SELENIUM_WAIT_SECONDS to a positive value if the UI needs time to render.'
+        )
 
     chosen_index = rng.randrange(len(options))
     options[chosen_index].click()
@@ -90,7 +110,7 @@ def _compute_expected(answer_rows):
 
 def test_random_answers_match_checkpoint_result(driver):
     rng = random.Random(int(RANDOM_SEED)) if RANDOM_SEED is not None else random.Random()
-    wait = WebDriverWait(driver, WAIT_SECONDS)
+    wait = WebDriverWait(driver, WAIT_SECONDS) if WAIT_SECONDS > 0 else None
 
     for run_index in range(1, RUNS + 1):
         _start_quiz(driver, wait)
@@ -99,10 +119,10 @@ def test_random_answers_match_checkpoint_result(driver):
         for _ in range(12):
             answer_rows.append(_choose_random_answer(driver, wait, rng))
 
-        wait.until(EC.visibility_of_element_located((By.ID, 'quiz-checkpoint-title')))
+        _find_element(driver, wait, By.ID, 'quiz-checkpoint-title')
 
-        checkpoint_top_career = wait.until(
-            EC.visibility_of_element_located((By.CSS_SELECTOR, '.quiz-card__checkpoint-career-title'))
+        checkpoint_top_career = _find_element(
+            driver, wait, By.CSS_SELECTOR, '.quiz-card__checkpoint-career-title'
         ).text.strip()
 
         expected = _compute_expected(answer_rows)
