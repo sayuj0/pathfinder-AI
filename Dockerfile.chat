@@ -1,0 +1,12 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV CHAT_SERVER_PORT=8787
+
+COPY server ./server
+
+EXPOSE 8787
+
+CMD ["node", "server/index.js"]

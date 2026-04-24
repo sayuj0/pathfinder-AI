@@ -30,6 +30,28 @@ Optional chat backend:
 npm run dev:server
 ```
 
+## Run With Docker
+
+This starts both containers:
+
+- `frontend` on `http://127.0.0.1:5173`
+- `chat` on `http://127.0.0.1:8787`
+
+```powershell
+docker compose up --build
+```
+
+Stop:
+
+```powershell
+docker compose down
+```
+
+Notes:
+
+- Put `GEMINI_API_KEY` in your local `.env` before starting if you want AI chat enabled.
+- The frontend container proxies `/api/*` to the chat container automatically.
+
 ## AI Integration (Important)
 
 The AI chatbot is a core feature of this app.
@@ -99,7 +121,7 @@ python -m pytest tests/test_quiz_random.py -q
 - `FRONTEND_URL` (default: `http://127.0.0.1:5173`)
 - `RANDOM_RUNS` (default: `12`)
 - `RANDOM_SEED` (optional)
-- `SELENIUM_WAIT_SECONDS` (default: `12`)
+- `SELENIUM_WAIT_SECONDS` (default: `0`, no explicit waits)
 - `SELENIUM_BROWSER` (`chrome` or `edge`, default: `chrome`)
 - `SELENIUM_HEADLESS` (`0` by default, visible browser)
 - `CHROMEDRIVER_PATH` (optional local path)

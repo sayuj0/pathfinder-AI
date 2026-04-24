@@ -1,0 +1,26 @@
+services:
+  chat:
+    build:
+      context: .
+      dockerfile: Dockerfile.chat
+    environment:
+      CHAT_SERVER_PORT: "8787"
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash-lite}
+      CHAT_RATE_LIMIT_RPM: ${CHAT_RATE_LIMIT_RPM:-10}
+      CHAT_RATE_LIMIT_RPD: ${CHAT_RATE_LIMIT_RPD:-20}
+      CHAT_RATE_LIMIT_TPM: ${CHAT_RATE_LIMIT_TPM:-250000}
+      CHAT_ESTIMATED_OUTPUT_TOKENS: ${CHAT_ESTIMATED_OUTPUT_TOKENS:-450}
+    ports:
+      - "8787:8787"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    depends_on:
+      - chat
+    ports:
+      - "5173:80"
+    restart: unless-stopped
